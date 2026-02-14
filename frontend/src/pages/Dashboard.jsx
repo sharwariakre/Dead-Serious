@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { apiClient } from '../api/client'
 
 function daysUntil(dateValue) {
@@ -21,47 +21,26 @@ function getCheckInProgress(vault) {
   return Math.round((elapsed / span) * 100)
 }
 
-function Dashboard({ vaultId, onVaultIdChange }) {
-  const [localVaultId, setLocalVaultId] = useState(vaultId || '')
-  const [vault, setVault] = useState(null)
+function Dashboard({ vault, onVaultUpdated }) {
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    setLocalVaultId(vaultId || '')
-  }, [vaultId])
-
-  const loadDashboard = async (targetVaultId = vaultId) => {
-    if (!targetVaultId) {
-      return
-    }
-
+  const handleRefresh = async () => {
     setLoading(true)
     setError('')
 
     try {
-      const response = await apiClient.getDashboard(targetVaultId)
-      setVault(response.vault)
-    } catch (loadError) {
-      setError(loadError.message)
-      setVault(null)
+      await onVaultUpdated?.()
+    } catch (refreshError) {
+      setError(refreshError.message)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    loadDashboard()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultId])
-
-  const handleUseVault = () => {
-    onVaultIdChange?.(localVaultId.trim())
-  }
-
   const handleCheckIn = async () => {
-    if (!vaultId) {
+    if (!vault) {
       return
     }
 
@@ -69,8 +48,8 @@ function Dashboard({ vaultId, onVaultIdChange }) {
     setError('')
 
     try {
-      const response = await apiClient.checkIn(vaultId)
-      setVault(response.vault)
+      await apiClient.checkInMyVault(vault.vaultId)
+      await onVaultUpdated?.()
     } catch (checkInError) {
       setError(checkInError.message)
     } finally {
@@ -79,7 +58,7 @@ function Dashboard({ vaultId, onVaultIdChange }) {
   }
 
   const handleRequestUnlock = async () => {
-    if (!vaultId) {
+    if (!vault) {
       return
     }
 
@@ -87,8 +66,8 @@ function Dashboard({ vaultId, onVaultIdChange }) {
     setError('')
 
     try {
-      const response = await apiClient.requestUnlock(vaultId, { reason })
-      setVault(response.vault)
+      await apiClient.requestUnlockMyVault({ reason }, vault.vaultId)
+      await onVaultUpdated?.()
     } catch (requestError) {
       setError(requestError.message)
     } finally {
@@ -102,13 +81,7 @@ function Dashboard({ vaultId, onVaultIdChange }) {
 
   const contentRows = useMemo(() => {
     const fallbackCounts = [12, 5, 34, 1, 3]
-    const labels = [
-      'Master Passwords',
-      'Legal Documents',
-      'Family Photos',
-      'Final Message',
-      'Crypto Wallet Keys',
-    ]
+    const labels = ['Master Passwords', 'Legal Documents', 'Family Photos', 'Final Message', 'Crypto Wallet Keys']
 
     return labels.map((label, index) => ({
       label,
@@ -118,23 +91,26 @@ function Dashboard({ vaultId, onVaultIdChange }) {
 
   const totalItems = contentRows.reduce((acc, row) => acc + row.items, 0)
 
+  if (!vault) {
+    return (
+      <section className="page dashboard-page">
+        <article className="panel">
+          <h3>No Vault Yet</h3>
+          <p>Create your vault first. Each account supports one vault that you can edit later.</p>
+        </article>
+      </section>
+    )
+  }
+
   return (
     <section className="page dashboard-page">
       <div className="panel control-row deadlock-toolbar">
-        <label className="field">
-          <span>Vault ID</span>
-          <input value={localVaultId} onChange={(event) => setLocalVaultId(event.target.value)} />
-        </label>
+        <div>
+          <p className="faint">Vault ID</p>
+          <code>{vault.vaultId}</code>
+        </div>
         <div className="action-group">
-          <button type="button" className="btn" onClick={handleUseVault} disabled={!localVaultId.trim()}>
-            Use Vault
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => loadDashboard(vaultId)}
-            disabled={!vaultId || loading}
-          >
+          <button type="button" className="btn btn-ghost" onClick={handleRefresh} disabled={loading}>
             Refresh
           </button>
         </div>
@@ -146,12 +122,12 @@ function Dashboard({ vaultId, onVaultIdChange }) {
           <span className="faint">Every {vault?.checkInPolicy?.intervalDays || 14} days</span>
         </div>
         <p className="warning-line">
-          {pendingDays !== null ? `${pendingDays} days until next check-in deadline` : 'Set a vault ID to load status'}
+          {pendingDays !== null ? `${pendingDays} days until next check-in deadline` : 'No check-in deadline yet'}
         </p>
         <div className="progress-track">
           <span className="progress-bar" style={{ width: `${checkInProgress}%` }} />
         </div>
-        <button type="button" className="btn btn-primary" onClick={handleCheckIn} disabled={!vault || loading}>
+        <button type="button" className="btn btn-primary" onClick={handleCheckIn} disabled={loading}>
           I&apos;M ALIVE - CHECK IN
         </button>
       </article>
@@ -159,7 +135,7 @@ function Dashboard({ vaultId, onVaultIdChange }) {
       <article className="panel vault-content-panel">
         <div className="panel-head">
           <h3>Vault Contents</h3>
-          <button className="btn btn-ghost" type="button">+ Add</button>
+          <span className="pill">{vault.files?.length || 0} file(s)</span>
         </div>
         <ul className="rows-list">
           {contentRows.map((row) => (
@@ -186,16 +162,14 @@ function Dashboard({ vaultId, onVaultIdChange }) {
               <li key={nominee.id || nominee.email}>
                 <span>
                   {nominee.email || `Nominee ${String.fromCharCode(65 + index)}`}
-                  <small className="faint">Fragment stored</small>
+                  <small className="faint">Fragment assigned</small>
                 </span>
-                <span className="faint">key</span>
+                <span className="faint">{nominee.status || 'pending'}</span>
               </li>
             )
           )}
         </ul>
-        <p className="faint">
-          Nominees will not be contacted until the dead man&apos;s switch triggers.
-        </p>
+        <p className="faint">Nominees are notified only after dead-man switch triggers or manual unlock request.</p>
       </article>
 
       <article className="panel security-panel">
@@ -212,8 +186,8 @@ function Dashboard({ vaultId, onVaultIdChange }) {
             <strong>Shamir 3-of-3</strong>
           </li>
           <li>
-            <span>Double Encryption</span>
-            <strong>Active</strong>
+            <span>Storage</span>
+            <strong>S3 + Postgres Metadata</strong>
           </li>
           <li>
             <span>Vault Status</span>
@@ -231,8 +205,8 @@ function Dashboard({ vaultId, onVaultIdChange }) {
             placeholder="Reason for emergency unlock request"
           />
         </label>
-        <button type="button" className="btn" onClick={handleRequestUnlock} disabled={!vault || loading}>
-          Trigger Unlock Request
+        <button type="button" className="btn" onClick={handleRequestUnlock} disabled={loading}>
+          Trigger Nominee Notification
         </button>
       </article>
 

@@ -227,9 +227,17 @@ button:disabled {
   border-bottom: 0;
 }
 
+.rows-list li.file-row {
+  align-items: center;
+}
+
 .rows-list li span {
   display: inline-grid;
   gap: 0.12rem;
+}
+
+.btn-inline {
+  padding: 0.35rem 0.7rem;
 }
 
 .rows-foot {
@@ -339,6 +347,10 @@ select:focus {
 
 .message.success {
   color: var(--green);
+}
+
+.message.warning {
+  color: var(--amber-bright);
 }
 
 .message.error {

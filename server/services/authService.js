@@ -1,99 +1,101 @@
-const fs = require("fs");
-const path = require("path");
-const { randomUUID } = require("crypto");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
+const { randomUUID } = require('crypto');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
-const USERS_DIR = path.join(__dirname, "..", "storage", "users");
-const USERS_FILE = path.join(USERS_DIR, "users.json");
-const TOKEN_TTL = process.env.JWT_EXPIRES_IN || "7d";
+const { query } = require('../db/postgres');
+
+const TOKEN_TTL = process.env.JWT_EXPIRES_IN || '7d';
 
 function getJwtSecret() {
-  return process.env.JWT_SECRET || "deadlock-dev-secret-change-me";
-}
-
-function ensureUsersFile() {
-  fs.mkdirSync(USERS_DIR, { recursive: true });
-  if (!fs.existsSync(USERS_FILE)) {
-    fs.writeFileSync(USERS_FILE, JSON.stringify([], null, 2));
-  }
-}
-
-function readUsers() {
-  ensureUsersFile();
-  return JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
-}
-
-function writeUsers(users) {
-  ensureUsersFile();
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+  return process.env.JWT_SECRET || 'deadlock-dev-secret-change-me';
 }
 
 function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
+  return String(email || '').trim().toLowerCase();
 }
 
-function safeUser(user) {
+function mapUser(row) {
+  if (!row) {
+    return null;
+  }
+
   return {
-    userId: user.userId,
-    email: user.email,
-    name: user.name,
-    createdAt: user.createdAt,
+    userId: row.user_id,
+    email: row.email,
+    name: row.name,
+    createdAt: row.created_at,
   };
+}
+
+async function findUserByEmail(email) {
+  const result = await query(
+    'SELECT user_id, email, name, password_hash, created_at FROM users WHERE email = $1 LIMIT 1',
+    [email]
+  );
+
+  return result.rows[0] || null;
 }
 
 async function registerUser({ email, password, name }) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
-    throw new Error("Email is required");
+    throw new Error('Email is required');
   }
 
   if (!password || String(password).length < 8) {
-    throw new Error("Password must be at least 8 characters");
+    throw new Error('Password must be at least 8 characters');
   }
 
-  const users = readUsers();
-  if (users.some((user) => user.email === normalizedEmail)) {
-    throw new Error("Email already registered");
+  const existing = await findUserByEmail(normalizedEmail);
+  if (existing) {
+    throw new Error('Email already registered');
   }
 
   const now = new Date().toISOString();
+  const userId = randomUUID();
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = {
-    userId: randomUUID(),
+
+  await query(
+    `
+      INSERT INTO users (user_id, email, name, password_hash, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $5)
+    `,
+    [
+      userId,
+      normalizedEmail,
+      String(name || normalizedEmail.split('@')[0] || 'User').trim(),
+      passwordHash,
+      now,
+    ]
+  );
+
+  return {
+    userId,
     email: normalizedEmail,
-    name: String(name || normalizedEmail.split("@")[0] || "User").trim(),
-    passwordHash,
+    name: String(name || normalizedEmail.split('@')[0] || 'User').trim(),
     createdAt: now,
-    updatedAt: now,
   };
-
-  users.push(user);
-  writeUsers(users);
-
-  return safeUser(user);
 }
 
 async function loginUser({ email, password }) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail || !password) {
-    throw new Error("Email and password are required");
+    throw new Error('Email and password are required');
   }
 
-  const users = readUsers();
-  const user = users.find((item) => item.email === normalizedEmail);
+  const user = await findUserByEmail(normalizedEmail);
   if (!user) {
-    throw new Error("Invalid credentials");
+    throw new Error('Invalid credentials');
   }
 
-  const isValid = await bcrypt.compare(password, user.passwordHash);
+  const isValid = await bcrypt.compare(password, user.password_hash);
   if (!isValid) {
-    throw new Error("Invalid credentials");
+    throw new Error('Invalid credentials');
   }
 
   const token = jwt.sign(
     {
-      userId: user.userId,
+      userId: user.user_id,
       email: user.email,
       name: user.name,
     },
@@ -103,7 +105,7 @@ async function loginUser({ email, password }) {
 
   return {
     token,
-    user: safeUser(user),
+    user: mapUser(user),
   };
 }
 

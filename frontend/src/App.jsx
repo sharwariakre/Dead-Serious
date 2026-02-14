@@ -12,37 +12,53 @@ const TABS = {
   nomineeUnlock: 'nomineeUnlock',
 }
 
-const STORED_VAULT_KEY = 'dead-serious-vault-id'
-const BYPASS_AUTH = import.meta.env.VITE_BYPASS_AUTH === 'true'
-
 function App() {
   const [activeTab, setActiveTab] = useState(TABS.dashboard)
-  const [vaultId, setVaultId] = useState(() => localStorage.getItem(STORED_VAULT_KEY) || '')
   const [session, setSession] = useState(() => apiClient.getSession())
+  const [vault, setVault] = useState(null)
+  const [vaultLoading, setVaultLoading] = useState(false)
+
+  const loadVault = async () => {
+    if (!session?.token) {
+      setVault(null)
+      return
+    }
+
+    setVaultLoading(true)
+    try {
+      const response = await apiClient.getMyVault()
+      setVault(response.vault || null)
+    } catch {
+      const fallbackVaultId = localStorage.getItem('deadlock-last-vault-id') || ''
+      if (!fallbackVaultId) {
+        setVault(null)
+      } else {
+        try {
+          const fallbackResponse = await apiClient.getDashboard(fallbackVaultId)
+          setVault(fallbackResponse.vault || null)
+        } catch {
+          setVault(null)
+        }
+      }
+    } finally {
+      setVaultLoading(false)
+    }
+  }
 
   useEffect(() => {
-    if (vaultId) {
-      localStorage.setItem(STORED_VAULT_KEY, vaultId)
-    } else {
-      localStorage.removeItem(STORED_VAULT_KEY)
-    }
-  }, [vaultId])
+    loadVault()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token])
 
   const handleLogout = () => {
     apiClient.clearSession()
+    localStorage.removeItem('deadlock-last-vault-id')
     setSession(null)
-    setVaultId('')
+    setVault(null)
+    setActiveTab(TABS.dashboard)
   }
 
-  const effectiveSession =
-    session?.token || !BYPASS_AUTH
-      ? session
-      : {
-          token: 'dev-bypass',
-          user: { userId: 'dev-guest', email: 'guest@local' },
-        }
-
-  if (!effectiveSession?.token) {
+  if (!session?.token) {
     return (
       <main className="app-shell">
         <header className="app-header card hero-header">
@@ -65,8 +81,8 @@ function App() {
           <p>DEADLOCK</p>
         </div>
         <div className="user-row">
-          <span className="pill status-live">Vault Active</span>
-          <span className="pill">{effectiveSession.user?.email || effectiveSession.user?.userId}</span>
+          <span className="pill status-live">{vault ? 'Vault Ready' : 'No Vault Yet'}</span>
+          <span className="pill">{session.user?.email || session.user?.userId}</span>
           <button type="button" className="btn btn-ghost" onClick={handleLogout}>
             Logout
           </button>
@@ -86,7 +102,7 @@ function App() {
           className={activeTab === TABS.createVault ? 'tab-button is-active' : 'tab-button'}
           onClick={() => setActiveTab(TABS.createVault)}
         >
-          Create Vault
+          {vault ? 'Edit Vault' : 'Create Vault'}
         </button>
         <button
           type="button"
@@ -100,17 +116,19 @@ function App() {
       <section className="active-vault card">
         <span className="status-dot" />
         <p>
-          Active Vault ID: <code>{vaultId || 'None selected'}</code>
+          {vaultLoading
+            ? 'Loading vault...'
+            : vault
+              ? `Vault: ${vault.vaultName} (${vault.vaultId})`
+              : 'No vault created yet. Use Create Vault to initialize your only vault.'}
         </p>
       </section>
 
-      {activeTab === TABS.dashboard && <Dashboard vaultId={vaultId} onVaultIdChange={setVaultId} />}
+      {activeTab === TABS.dashboard && <Dashboard vault={vault} onVaultUpdated={loadVault} />}
       {activeTab === TABS.createVault && (
-        <CreateVault onVaultCreated={setVaultId} currentUser={effectiveSession.user} />
+        <CreateVault currentUser={session.user} existingVault={vault} onVaultUpdated={loadVault} />
       )}
-      {activeTab === TABS.nomineeUnlock && (
-        <NomineeUnlock vaultId={vaultId} onVaultIdChange={setVaultId} />
-      )}
+      {activeTab === TABS.nomineeUnlock && <NomineeUnlock />}
     </main>
   )
 }

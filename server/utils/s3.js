@@ -1,5 +1,3 @@
-const crypto = require("crypto");
-
 function isS3Enabled() {
   return process.env.S3_ENABLED === "true";
 }
@@ -11,9 +9,7 @@ function sanitizeUserId(userId) {
 function getBucketNameForUser(userId) {
   const prefix = (process.env.S3_BUCKET_PREFIX || "deadlock-user").toLowerCase();
   const cleanedUser = sanitizeUserId(userId);
-  const digest = crypto.createHash("sha256").update(String(userId)).digest("hex").slice(0, 10);
-
-  let name = `${prefix}-${cleanedUser}-${digest}`.replace(/-+/g, "-");
+  let name = `${prefix}-${cleanedUser}`.replace(/-+/g, "-");
   if (name.length > 63) {
     name = name.slice(0, 63).replace(/-+$/g, "");
   }
@@ -87,9 +83,41 @@ async function uploadObject({ bucketName, key, body, contentType }) {
   return { bucketName, key };
 }
 
+async function downloadObject({ bucketName, key }) {
+  const { client, commands } = loadS3Client();
+  const { GetObjectCommand } = commands;
+
+  const response = await client.send(
+    new GetObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+    })
+  );
+
+  const bytes = await response.Body.transformToByteArray();
+  return {
+    body: Buffer.from(bytes),
+    contentType: response.ContentType || "application/octet-stream",
+  };
+}
+
+async function deleteObject({ bucketName, key }) {
+  const { client, commands } = loadS3Client();
+  const { DeleteObjectCommand } = commands;
+
+  await client.send(
+    new DeleteObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+    })
+  );
+}
+
 module.exports = {
   isS3Enabled,
   getBucketNameForUser,
   ensureBucketExists,
   uploadObject,
+  downloadObject,
+  deleteObject,
 };

@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-function VaultForm({ onSubmit, isSubmitting = false, ownerLabel = '' }) {
+function VaultForm({ onSubmit, isSubmitting = false, ownerLabel = '', initialValues = null, submitLabel = 'Create Vault' }) {
   const [vaultName, setVaultName] = useState('')
   const [nominees, setNominees] = useState('')
   const [triggerTime, setTriggerTime] = useState('')
@@ -8,6 +8,19 @@ function VaultForm({ onSubmit, isSubmitting = false, ownerLabel = '' }) {
   const [gracePeriodDays, setGracePeriodDays] = useState(30)
   const [maxMissedCheckIns, setMaxMissedCheckIns] = useState(2)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!initialValues) {
+      return
+    }
+
+    setVaultName(initialValues.vaultName || '')
+    setNominees((initialValues.nominees || []).map((nominee) => nominee.email || nominee).join(','))
+    setTriggerTime(initialValues.triggerTime ? String(initialValues.triggerTime).slice(0, 16) : '')
+    setCheckInIntervalDays(initialValues.checkInPolicy?.intervalDays || 14)
+    setGracePeriodDays(initialValues.checkInPolicy?.gracePeriodDays || 30)
+    setMaxMissedCheckIns(initialValues.checkInPolicy?.maxMissedCheckIns || 2)
+  }, [initialValues])
 
   const parsedNominees = useMemo(
     () =>
@@ -128,7 +141,7 @@ function VaultForm({ onSubmit, isSubmitting = false, ownerLabel = '' }) {
       </div>
       {error && <p className="message error">{error}</p>}
       <button className="btn" type="submit" disabled={isSubmitting}>
-        {isSubmitting ? 'Creating...' : 'Create Vault'}
+        {isSubmitting ? 'Saving...' : submitLabel}
       </button>
     </form>
   )
