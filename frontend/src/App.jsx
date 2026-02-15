@@ -3,16 +3,18 @@ import CreateVault from './pages/CreateVault'
 import Dashboard from './pages/Dashboard'
 import NomineeUnlock from './pages/NomineeUnlock'
 import Login from './pages/Login'
+import Landing from './pages/Landing'
 import { apiClient } from './api/client'
 import './App.css'
 
 const TABS = {
+  landing: 'landing',
   dashboard: 'dashboard',
   createVault: 'createVault',
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState(TABS.dashboard)
+  const [activeTab, setActiveTab] = useState(TABS.landing)
   const [authView, setAuthView] = useState('owner')
   const [session, setSession] = useState(() => apiClient.getSession())
   const [vault, setVault] = useState(null)
@@ -50,12 +52,19 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token])
 
+  useEffect(() => {
+    if (!session?.token) return
+    if (vault && activeTab === TABS.landing) {
+      setActiveTab(TABS.dashboard)
+    }
+  }, [vault, activeTab, session?.token])
+
   const handleLogout = () => {
     apiClient.clearSession()
     localStorage.removeItem('deadlock-last-vault-id')
     setSession(null)
     setVault(null)
-    setActiveTab(TABS.dashboard)
+    setActiveTab(TABS.landing)
   }
 
   if (!session?.token) {
@@ -100,34 +109,41 @@ function App() {
         </div>
       </header>
 
-      <nav className="tab-nav card" aria-label="Main navigation">
-        <button
-          type="button"
-          className={activeTab === TABS.dashboard ? 'tab-button is-active' : 'tab-button'}
-          onClick={() => setActiveTab(TABS.dashboard)}
-        >
-          Dashboard
-        </button>
-        <button
-          type="button"
-          className={activeTab === TABS.createVault ? 'tab-button is-active' : 'tab-button'}
-          onClick={() => setActiveTab(TABS.createVault)}
-        >
-          {vault ? 'Edit Vault' : 'Create Vault'}
-        </button>
-      </nav>
+      {activeTab !== TABS.landing && (
+        <>
+          <nav className="tab-nav card" aria-label="Main navigation">
+            <button
+              type="button"
+              className={activeTab === TABS.dashboard ? 'tab-button is-active' : 'tab-button'}
+              onClick={() => setActiveTab(TABS.dashboard)}
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              className={activeTab === TABS.createVault ? 'tab-button is-active' : 'tab-button'}
+              onClick={() => setActiveTab(TABS.createVault)}
+            >
+              {vault ? 'Edit Vault' : 'Create Vault'}
+            </button>
+          </nav>
 
-      <section className="active-vault card">
-        <span className="status-dot" />
-        <p>
-          {vaultLoading
-            ? 'Loading vault...'
-            : vault
-              ? `Vault: ${vault.vaultName} (${vault.vaultId})`
-              : 'No vault created yet. Use Create Vault to initialize your only vault.'}
-        </p>
-      </section>
+          <section className="active-vault card">
+            <span className="status-dot" />
+            <p>
+              {vaultLoading
+                ? 'Loading vault...'
+                : vault
+                  ? `Vault: ${vault.vaultName} (${vault.vaultId})`
+                  : 'No vault created yet. Use Create Vault to initialize your only vault.'}
+            </p>
+          </section>
+        </>
+      )}
 
+      {activeTab === TABS.landing && (
+        <Landing onCreateVault={() => setActiveTab(TABS.createVault)} />
+      )}
       {activeTab === TABS.dashboard && (
         <Dashboard
           vault={vault}

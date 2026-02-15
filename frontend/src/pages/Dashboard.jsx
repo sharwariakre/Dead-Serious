@@ -220,29 +220,23 @@ function Dashboard({ vault, onVaultUpdated }) {
 
   return (
     <section className="page dashboard-page">
-      {/* Vault Header */}
-      <div className="panel control-row deadlock-toolbar">
-        <div>
-          <p className="faint">Vault ID</p>
-          <code>{vault.vaultId}</code>
-        </div>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={handleRefresh}
-          disabled={loading}
-        >
-          Refresh
-        </button>
-      </div>
-
       {/* Dead Man Switch */}
       <article className="panel dm-panel">
         <div className="panel-head">
           <h3>Dead Man&apos;s Switch</h3>
-          <span className="faint">
-            Every {vault?.checkInPolicy?.intervalDays || 14} days
-          </span>
+          <div className="action-group">
+            <span className="faint">
+              Every {vault?.checkInPolicy?.intervalDays || 14} days
+            </span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-inline"
+              onClick={handleRefresh}
+              disabled={loading}
+            >
+              Refresh
+            </button>
+          </div>
         </div>
         <p className="warning-line">
           {pendingDays !== null
