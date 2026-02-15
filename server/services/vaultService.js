@@ -82,13 +82,66 @@ function formatVaultSummary(vault) {
   };
 }
 
+function hydrateVaultFromRow(row) {
+  const metadata = { ...(row?.metadata || {}) };
+  if (!row) {
+    return metadata;
+  }
+
+  metadata.lastCheckIn = row.last_check_in || metadata.lastCheckIn || null;
+
+  if (!metadata.deadMan) {
+    metadata.deadMan = {};
+  }
+  metadata.deadMan.nextCheckInDueAt =
+    row.next_check_in_due_at || metadata.deadMan.nextCheckInDueAt || null;
+
+  const sqlCheckInCount = Number(row.check_in_count || 0);
+  if (!Array.isArray(metadata.checkIns)) {
+    metadata.checkIns = [];
+  }
+  if (sqlCheckInCount > metadata.checkIns.length) {
+    metadata.checkIns = Array.from({ length: sqlCheckInCount }, (_, index) => metadata.checkIns[index] || null);
+  }
+
+  return metadata;
+}
+
 async function getVaultRowByOwner(ownerId) {
-  const result = await query('SELECT vault_id, metadata FROM vaults WHERE owner_id = $1 LIMIT 1', [ownerId]);
+  const result = await query(
+    `
+      SELECT
+        vault_id,
+        owner_id,
+        metadata,
+        last_check_in,
+        next_check_in_due_at,
+        check_in_count
+      FROM vaults
+      WHERE owner_id = $1
+      LIMIT 1
+    `,
+    [ownerId]
+  );
   return result.rows[0] || null;
 }
 
 async function getVaultRowById(vaultId) {
-  const result = await query('SELECT vault_id, owner_id, metadata FROM vaults WHERE vault_id = $1 LIMIT 1', [vaultId]);
+  const result = await query(
+    `
+      SELECT
+        vault_id,
+        owner_id,
+        metadata,
+        last_check_in,
+        next_check_in_due_at,
+        check_in_count
+      FROM vaults
+      WHERE vault_id = $1
+      LIMIT 1
+    `,
+    [vaultId]
+  );
   return result.rows[0] || null;
 }
 
@@ -97,7 +150,7 @@ async function requireVaultByOwner(ownerId) {
   if (!row) {
     throw new Error('Vault not found');
   }
-  return row.metadata;
+  return hydrateVaultFromRow(row);
 }
 
 async function requireVaultById(vaultId) {
@@ -105,20 +158,50 @@ async function requireVaultById(vaultId) {
   if (!row) {
     throw new Error('Vault not found');
   }
-  return row.metadata;
+  return hydrateVaultFromRow(row);
 }
 
 async function persistVault(vault) {
-  await query('UPDATE vaults SET metadata = $2, updated_at = NOW() WHERE vault_id = $1', [vault.vaultId, vault]);
+  await query(
+    `
+      UPDATE vaults
+      SET
+        metadata = $2,
+        last_check_in = $3,
+        next_check_in_due_at = $4,
+        check_in_count = $5,
+        updated_at = NOW()
+      WHERE vault_id = $1
+    `,
+    [
+      vault.vaultId,
+      vault,
+      vault.lastCheckIn || null,
+      vault.deadMan?.nextCheckInDueAt || null,
+      Array.isArray(vault.checkIns) ? vault.checkIns.length : 0,
+    ]
+  );
 }
 
 async function notifyNomineesForVault(vault, nowIso) {
-  const key = getServerEncryptionKey();
+  let key = null;
+  try {
+    key = getServerEncryptionKey();
+  } catch {
+    key = null;
+  }
 
   const updatedNominees = [];
   for (const nominee of vault.nominees || []) {
     const shareRecord = (vault.shares?.fragments || []).find((item) => item.shareId === nominee.id);
-    const nomineeShare = shareRecord ? decryptText(shareRecord.encryptedShare, key) : '';
+    let nomineeShare = '';
+    if (shareRecord && key) {
+      try {
+        nomineeShare = decryptText(shareRecord.encryptedShare, key);
+      } catch {
+        nomineeShare = '';
+      }
+    }
 
     if (!nominee.notifiedAt) {
       await notifyNominee({
@@ -248,10 +331,27 @@ async function upsertVaultForOwner({
 
     await query(
       `
-        INSERT INTO vaults (vault_id, owner_id, metadata, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $4)
+        INSERT INTO vaults (
+          vault_id,
+          owner_id,
+          metadata,
+          created_at,
+          updated_at,
+          last_check_in,
+          next_check_in_due_at,
+          check_in_count
+        )
+        VALUES ($1, $2, $3, $4, $4, $5, $6, $7)
       `,
-      [vaultId, ownerId, metadata, now]
+      [
+        vaultId,
+        ownerId,
+        metadata,
+        now,
+        metadata.lastCheckIn || null,
+        metadata.deadMan?.nextCheckInDueAt || null,
+        Array.isArray(metadata.checkIns) ? metadata.checkIns.length : 0,
+      ]
     );
 
     return formatVaultSummary(metadata);
@@ -296,7 +396,7 @@ async function getVaultByOwner(ownerId) {
   if (!row) {
     return null;
   }
-  return formatVaultSummary(row.metadata);
+  return formatVaultSummary(hydrateVaultFromRow(row));
 }
 
 async function getVaultDashboard(vaultId) {
@@ -810,6 +910,27 @@ function evaluateSingleVault(vault, nowIso) {
   }
 
   const now = new Date(nowIso);
+  const triggerAt = vault.triggerTime ? new Date(vault.triggerTime) : null;
+
+  if (
+    triggerAt &&
+    !Number.isNaN(triggerAt.getTime()) &&
+    now >= triggerAt &&
+    vault.status !== STATUS.NOMINEES_NOTIFIED
+  ) {
+    vault.status = STATUS.NOMINEES_NOTIFIED;
+    vault.deadMan.nomineesNotifiedAt = vault.deadMan.nomineesNotifiedAt || nowIso;
+    vault.unlockRequest = {
+      requestedAt: nowIso,
+      reason: 'Trigger time reached',
+      approvalsRequired: vault.threshold,
+      approvedCount: (vault.nominees || []).filter((nominee) => nominee.status === 'approved').length,
+      completedAt: null,
+    };
+    vault.updatedAt = nowIso;
+    return true;
+  }
+
   const nextDueAt = new Date(vault.deadMan.nextCheckInDueAt);
 
   if ((vault.status === STATUS.ACTIVE || vault.status === STATUS.MISSED_CHECKIN) && now > nextDueAt) {

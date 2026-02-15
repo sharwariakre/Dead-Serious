@@ -12,13 +12,30 @@ function daysUntil(dateValue) {
 
 function getCheckInProgress(vault) {
   const last = vault?.lastCheckIn ? new Date(vault.lastCheckIn).getTime() : Date.now()
-  const next = vault?.deadMan?.nextCheckInDueAt
-    ? new Date(vault.deadMan.nextCheckInDueAt).getTime()
+  const next = getEffectiveDueDate(vault)
+    ? new Date(getEffectiveDueDate(vault)).getTime()
     : last
 
   const span = Math.max(next - last, 1)
   const elapsed = Math.min(Math.max(Date.now() - last, 0), span)
   return Math.round((elapsed / span) * 100)
+}
+
+function getEffectiveDueDate(vault) {
+  const nextCheckInDueAt = vault?.deadMan?.nextCheckInDueAt || null
+  const triggerTime = vault?.triggerTime || null
+
+  const nextTs = nextCheckInDueAt ? new Date(nextCheckInDueAt).getTime() : null
+  const triggerTs = triggerTime ? new Date(triggerTime).getTime() : null
+
+  const validNext = nextTs !== null && !Number.isNaN(nextTs) ? nextCheckInDueAt : null
+  const validTrigger = triggerTs !== null && !Number.isNaN(triggerTs) ? triggerTime : null
+
+  if (validNext && validTrigger) {
+    return triggerTs < nextTs ? validTrigger : validNext
+  }
+
+  return validTrigger || validNext
 }
 
 function textToBase64(value) {
@@ -181,8 +198,12 @@ function Dashboard({ vault, onVaultUpdated }) {
   }
 
   const nominees = vault?.approvals?.nominees || []
-  const pendingDays = daysUntil(vault?.deadMan?.nextCheckInDueAt)
+  const nextDueCheckInAt = vault?.deadMan?.nextCheckInDueAt || null
+  const hardTriggerAt = vault?.triggerTime || null
+  const effectiveDueDate = getEffectiveDueDate(vault)
+  const pendingDays = daysUntil(effectiveDueDate)
   const checkInProgress = getCheckInProgress(vault)
+  const lastCheckInAt = vault?.lastCheckIn || null
   const notificationStarted =
     vault?.status === 'nominees_notified' || vault?.status === 'unlocked'
 
@@ -223,11 +244,25 @@ function Dashboard({ vault, onVaultUpdated }) {
             Every {vault?.checkInPolicy?.intervalDays || 14} days
           </span>
         </div>
-        <p>
+        <p className="warning-line">
           {pendingDays !== null
             ? `${pendingDays} days until next check-in`
             : 'No deadline set'}
         </p>
+        <div className="dm-stats">
+          <div className="dm-stat">
+            <span className="faint">Last check-in</span>
+            <strong>{lastCheckInAt ? new Date(lastCheckInAt).toLocaleString() : 'Not yet'}</strong>
+          </div>
+          <div className="dm-stat">
+            <span className="faint">Next due check-in</span>
+            <strong>{nextDueCheckInAt ? new Date(nextDueCheckInAt).toLocaleString() : 'Not scheduled'}</strong>
+          </div>
+          <div className="dm-stat">
+            <span className="faint">Hard trigger date</span>
+            <strong>{hardTriggerAt ? new Date(hardTriggerAt).toLocaleString() : 'Not set'}</strong>
+          </div>
+        </div>
         <div className="progress-track">
           <span
             className="progress-bar"
@@ -242,6 +277,7 @@ function Dashboard({ vault, onVaultUpdated }) {
         >
           I'M ALIVE - CHECK IN
         </button>
+        {error && <p className="message error">{error}</p>}
       </article>
 
       {/* Vault Contents */}
@@ -366,7 +402,6 @@ function Dashboard({ vault, onVaultUpdated }) {
         )}
       </article>
 
-      {error && <p className="message error">{error}</p>}
     </section>
   )
 }

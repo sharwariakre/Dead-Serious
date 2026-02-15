@@ -14,8 +14,12 @@ function VaultForm({ onSubmit, isSubmitting = false, ownerLabel = '', initialVal
       return
     }
 
+    const nomineeSource = Array.isArray(initialValues.nominees)
+      ? initialValues.nominees
+      : initialValues.approvals?.nominees || []
+
     setVaultName(initialValues.vaultName || '')
-    setNominees((initialValues.nominees || []).map((nominee) => nominee.email || nominee).join(','))
+    setNominees(nomineeSource.map((nominee) => nominee.email || nominee).join(','))
     setTriggerTime(initialValues.triggerTime ? String(initialValues.triggerTime).slice(0, 16) : '')
     setCheckInIntervalDays(initialValues.checkInPolicy?.intervalDays || 14)
     setGracePeriodDays(initialValues.checkInPolicy?.gracePeriodDays || 30)

@@ -128,7 +128,13 @@ function App() {
         </p>
       </section>
 
-      {activeTab === TABS.dashboard && <Dashboard vault={vault} onVaultUpdated={loadVault} />}
+      {activeTab === TABS.dashboard && (
+        <Dashboard
+          vault={vault}
+          onVaultUpdated={loadVault}
+          onEditVault={() => setActiveTab(TABS.createVault)}
+        />
+      )}
       {activeTab === TABS.createVault && (
         <CreateVault currentUser={session.user} existingVault={vault} onVaultUpdated={loadVault} />
       )}

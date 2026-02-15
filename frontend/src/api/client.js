@@ -155,8 +155,16 @@ export const apiClient = {
   listMyFiles: () => request('/vault/me/files'),
   deleteMyFile: (fileId) => request(`/vault/me/files/${fileId}`, { method: 'DELETE' }),
   downloadMyFileUrl: (fileId) => getAuthorizedUrl(`/vault/me/files/${fileId}/download`),
-  checkInMyVault: (vaultId = '') =>
-    requestWithFallback('/vault/me/check-in', vaultId ? `/vault/${vaultId}/check-in` : '', { method: 'POST' }),
+  checkInMyVault: async (vaultId = '') => {
+    try {
+      return await request('/vault/me/check-in', { method: 'POST' })
+    } catch (primaryError) {
+      if (!vaultId) {
+        throw primaryError
+      }
+      return request(`/vault/${vaultId}/check-in`, { method: 'POST' })
+    }
+  },
   requestUnlockMyVault: (body, vaultId = '') =>
     requestWithFallback('/vault/me/request-unlock', vaultId ? `/vault/${vaultId}/request-unlock` : '', {
       method: 'POST',

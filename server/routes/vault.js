@@ -151,8 +151,11 @@ router.post('/me/request-unlock', authMiddleware, async (req, res) => {
     if (err.message === 'Vault not found') {
       return res.status(404).json({ error: err.message });
     }
+    if (err.message.includes('MASTER_SHARE') || err.message.includes('Nominee') || err.message.includes('share')) {
+      return res.status(400).json({ error: err.message });
+    }
     console.error(err);
-    return res.status(500).json({ error: 'Unlock request failed' });
+    return res.status(500).json({ error: err.message || 'Unlock request failed' });
   }
 });
 

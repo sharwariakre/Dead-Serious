@@ -189,6 +189,43 @@ button:disabled {
   font-family: 'Space Mono', monospace;
 }
 
+.dm-stats {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.dm-stat {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 255, 255, 0.02);
+  display: grid;
+  gap: 0.2rem;
+}
+
+.dm-stat strong {
+  font-size: 0.95rem;
+  color: #f2f5fc;
+}
+
+.dm-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dm-progress-head strong {
+  color: var(--amber-bright);
+  font-family: 'Space Mono', monospace;
+}
+
+.dm-urgent {
+  color: #ff8d8d;
+  border-color: rgba(255, 77, 77, 0.45);
+  background: rgba(255, 77, 77, 0.12);
+}
+
 .progress-track {
   width: 100%;
   height: 10px;
@@ -383,6 +420,10 @@ select:focus {
   .unlock-panel,
   .deadlock-toolbar {
     grid-column: 1 / -1;
+  }
+
+  .dm-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .control-row {
