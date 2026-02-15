@@ -3,6 +3,7 @@ const path = require('path')
 const { randomUUID } = require('crypto')
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')
+const { isS3Enabled, getBucketNameForUser, ensureBucketExists } = require("../utils/s3");
 
 const USE_POSTGRES =
   process.env.USE_POSTGRES === 'true' || Boolean(String(process.env.DATABASE_URL || '').trim())
@@ -88,6 +89,13 @@ async function registerUser({ email, password, name }) {
     users.push({ userId, email: normalizedEmail, name: resolvedName, passwordHash, createdAt: now, updatedAt: now })
     writeUsers(users)
 
+    console.log("[signup] USE_POSTGRES=", USE_POSTGRES, "S3_ENABLED=", isS3Enabled(), "DB=", process.env.DATABASE_URL);
+    // Create a per-user bucket immediately on signup (only if S3 enabled)
+    if (isS3Enabled()) {
+      const bucketName = getBucketNameForUser(userId);
+      await ensureBucketExists(bucketName);
+    }
+
     return { userId, email: normalizedEmail, name: resolvedName, createdAt: now }
   }
 
@@ -99,6 +107,16 @@ async function registerUser({ email, password, name }) {
     `,
     [userId, normalizedEmail, resolvedName, passwordHash, now]
   )
+  // Create a per-user bucket immediately on signup (only if S3 enabled)
+  if (isS3Enabled()) {
+    const bucketName = getBucketNameForUser(userId);
+    await ensureBucketExists(bucketName);
+
+    await query(
+    `UPDATE users SET bucket_name = $2, updated_at = now() WHERE user_id = $1`,
+    [userId, bucketName]
+    )
+  }
 
   return { userId, email: normalizedEmail, name: resolvedName, createdAt: now }
 }

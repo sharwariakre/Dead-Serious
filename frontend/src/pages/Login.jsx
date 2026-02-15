@@ -17,9 +17,12 @@ function Login({ onAuthenticated }) {
     setLoading(true)
 
     try {
+      const cleanEmail = email.trim().toLowerCase()
+      const cleanName = name.trim()
+      const cleanPassword = password.trim()
       const response = isLogin
-        ? await apiClient.login({ email, password })
-        : await apiClient.register({ name, email, password })
+        ? await apiClient.login({ email: cleanEmail, password: cleanPassword })
+        : await apiClient.register({ name: cleanName, email: cleanEmail, password: cleanPassword })
 
       onAuthenticated?.({ token: response.token, user: response.user })
     } catch (authError) {
