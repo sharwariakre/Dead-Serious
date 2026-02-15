@@ -276,7 +276,7 @@ function Dashboard({ vault, onVaultUpdated }) {
       </article>
 
       {/* Upload Section */}
-      <article className="panel full-width-panel">
+      <article className="panel unlock-panel">
         <div className="panel-head" style={{ display: 'flex', justifyContent: 'space-between' }}>
           <h3>Upload Encrypted Files</h3>
           <button
@@ -333,7 +333,38 @@ function Dashboard({ vault, onVaultUpdated }) {
         )}
       </article>
 
-      
+      {/* Emergency Unlock Panel */}
+      <article className="panel unlock-panel">
+        <div className="panel-head">
+          <h3>Emergency Unlock</h3>
+        </div>
+
+        <label className="field">
+          <span>Reason for emergency unlock</span>
+          <input
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Explain why vault should be unlocked"
+          />
+        </label>
+
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={handleRequestUnlock}
+          disabled={loading || notificationStarted}
+        >
+          {notificationStarted
+            ? 'Nominees Already Notified'
+            : 'Trigger Nominee Notification'}
+        </button>
+
+        {notificationStarted && (
+          <p className="message error">
+            Nominee notification has already started. This action cannot be reversed.
+          </p>
+        )}
+      </article>
 
       {error && <p className="message error">{error}</p>}
     </section>
